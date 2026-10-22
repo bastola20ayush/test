@@ -35,6 +35,14 @@ find_adb() {
     ADB=adb
     return
   fi
+  # Running in Termux on an Android phone: Google's platform-tools are built
+  # for PCs, so use Termux's own adb package.
+  if command -v pkg >/dev/null && [[ ${PREFIX:-} == *com.termux* ]]; then
+    echo "adb not found, installing it..."
+    pkg install -y android-tools
+    ADB=adb
+    return
+  fi
   ADB="$HERE/platform-tools/adb"
   [[ -x $ADB ]] && return
   local os

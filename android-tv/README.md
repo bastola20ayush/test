@@ -24,7 +24,13 @@ Three items at the bottom are kept by default, because turning them off breaks a
 
 ## 3. Run it
 
-Download this folder, open a terminal in it, and run the command for your computer.
+**From an Android phone:** install [Termux from F-Droid](https://f-droid.org/packages/com.termux/). The Play Store version is outdated. Open it, paste this line, and change the IP address to your TV's:
+
+```bash
+pkg install -y git android-tools && git clone -b ccr-adf56627-7x1odh https://github.com/bastola20ayush/test && bash test/android-tv/tv-setup.sh 192.168.0.100
+```
+
+**From a computer:** download this folder, open a terminal in it, and run the command for your computer.
 
 **Windows (PowerShell):**
 
