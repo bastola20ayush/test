@@ -53,12 +53,30 @@ in_list() {
 # Prints the package of every app the TV shows on a home screen, plus every
 # app that was installed by hand.
 candidate_packages() {
-  local cat
+  local cat found pkg main=android.intent.action.MAIN
   tv_sh pm list packages -3 | sed -n 's/^package://p'
-  for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
-    tv_sh pm query-activities --brief -a android.intent.action.MAIN -c "android.intent.category.$cat" |
+  found=$(for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
+    tv_sh pm query-activities --brief -a $main -c "android.intent.category.$cat" |
       grep -oE '[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+/' | tr -d '/' || true
-  done
+  done)
+  if [[ -n $found ]]; then
+    echo "$found"
+    return
+  fi
+  # Some TVs return nothing for the command above, so ask about each app instead.
+  echo "Checking each app one by one (about a minute)..." >&2
+  while read -r pkg; do
+    in_list "$pkg" "${KEEP[@]}" && continue
+    is_protected "$pkg" && continue
+    [[ $pkg =~ $SAFE_REGEX ]] && continue
+    for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
+      if tv_sh cmd package resolve-activity --brief -a $main -c "android.intent.category.$cat" -p "$pkg" |
+        grep -qF "$pkg/"; then
+        echo "$pkg"
+        break
+      fi
+    done
+  done < <(tv_sh pm list packages -e | sed -n 's/^package://p')
 }
 
 re_enable_youtube() {
@@ -129,6 +147,12 @@ diagnose() {
   tv_sh cmd package set-home-activity "$FLAUNCHER_PKG/.MainActivity" | sed 's/^/  /'
   echo "Home screen the TV opens now:"
   tv_sh cmd package resolve-activity --brief -a $main -c android.intent.category.HOME | components | sed 's/^/  /'
+  echo "Android version: $(tv_sh getprop ro.build.version.release)"
+  echo "Raw app query (first lines):"
+  tv_sh pm query-activities --brief -a $main -c android.intent.category.LAUNCHER | head -6 | sed 's/^/  /' || true
+  echo "Raw per-app query for FLauncher:"
+  tv_sh cmd package resolve-activity --brief -a $main -c android.intent.category.LEANBACK_LAUNCHER -p "$FLAUNCHER_PKG" |
+    head -6 | sed 's/^/  /' || true
   for cat in HOME LEANBACK_LAUNCHER LAUNCHER; do
     echo "Apps listed under $cat:"
     tv_sh pm query-activities --brief -a $main -c "android.intent.category.$cat" | components | sed 's/^/  /'
