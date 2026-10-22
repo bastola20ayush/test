@@ -27,7 +27,7 @@ NEPAL_M3U=https://iptv-org.github.io/iptv/countries/np.m3u
 # Apps that stay on. The Play Store stays so YouTube and the live-TV app can
 # update; hide it from the home screen inside FLauncher instead.
 KEEP=("$YOUTUBE_PKG" "$FLAUNCHER_PKG" com.android.vending
-  "$TIVIMATE_PKG" studio.scillarium.ottnavigator org.xbmc.kodi com.nst.iptvsmarterstvbox)
+  "$TIVIMATE_PKG" studio.scillarium.ottnavigator com.nst.iptvsmarterstvbox)
 
 # Anything matching this is left alone even if it shows up as an app: vendor
 # settings, HDMI/input switching, keyboards and system services differ on every
