@@ -52,7 +52,7 @@ in_list() {
 
 # Prints the package of every app that can appear on a home screen.
 launcher_packages() {
-  local cat found pkg main=android.intent.action.MAIN
+  local cat found pkg out main=android.intent.action.MAIN
   found=$(for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
     tv_sh pm query-activities --brief -a $main -c "android.intent.category.$cat" |
       grep -oE '[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+/' | tr -d '/' || true
@@ -75,8 +75,8 @@ launcher_packages() {
   echo "Checking each app one by one (about a minute)..." >&2
   while read -r pkg; do
     for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
-      if tv_sh cmd package resolve-activity --brief -a $main -c "android.intent.category.$cat" -p "$pkg" |
-        grep -qF "$pkg/"; then
+      out=$(tv_sh cmd package resolve-activity --brief -a $main -c "android.intent.category.$cat" -p "$pkg")
+      if [[ $out == *"$pkg/"* ]]; then
         echo "$pkg"
         break
       fi

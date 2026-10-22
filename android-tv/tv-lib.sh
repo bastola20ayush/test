@@ -45,7 +45,9 @@ is_protected() {
 
 tv() { "$ADB" -s "$SERIAL" "$@"; }
 # Runs a command on the TV and prints its output without Windows line endings.
-tv_sh() { tv shell "$@" 2>&1 | tr -d '\r' || true; }
+# adb reads standard input, which would swallow the rest of any list a caller
+# is looping over, so it gets none.
+tv_sh() { tv shell "$@" </dev/null 2>&1 | tr -d '\r' || true; }
 
 connect() {
   echo "Connecting to $SERIAL..."
