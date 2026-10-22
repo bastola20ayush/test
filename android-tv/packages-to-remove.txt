@@ -1,0 +1,39 @@
+# Apps the setup script turns off on the TV. One package name per line;
+# anything after "#" is ignored. Packages that aren't on your TV are skipped.
+# Delete a line to keep that app, or remove the "#" in front of one at the
+# bottom to turn it off as well. Everything here can be brought back with
+# the --restore / -Restore option.
+
+# Stock home screens (FLauncher replaces these)
+com.google.android.apps.tv.launcherx       # Google TV home (the one with ads)
+com.google.android.tungsten.setupwraith    # Google TV helper that re-enables its home
+com.google.android.tvlauncher              # Android TV home
+com.google.android.leanbacklauncher        # older Android TV home
+com.mitv.tvhome.atv                        # Xiaomi PatchWall
+
+# Ads, recommendations and screensavers
+com.google.android.tvrecommendations       # "recommended for you" rows / sponsored content
+com.google.android.apps.tv.dreamx          # Google TV ambient mode
+com.google.android.backdrop                # Android TV Backdrop screensaver
+
+# Preinstalled Google apps
+com.google.android.youtube.tv              # YouTube
+com.google.android.youtube.tvmusic         # YouTube Music
+com.google.android.youtube.tvkids          # YouTube Kids
+com.google.android.videos                  # Google TV / Play Movies
+com.google.android.play.games              # Play Games
+com.google.android.music                   # Play Music
+
+# Preinstalled streaming apps
+com.netflix.ninja                          # Netflix
+com.amazon.amazonvideo.livingroom          # Prime Video
+com.disney.disneyplus                      # Disney+
+com.hulu.livingroomplus                    # Hulu
+com.spotify.tv.android                     # Spotify
+com.apple.atve.androidtv.appletv           # Apple TV
+com.plexapp.android                        # Plex
+
+# Turning these off breaks a feature, so they're kept unless you remove the "#"
+# com.google.android.katniss               # Google Assistant / voice search (remote mic button)
+# com.google.android.apps.mediashell       # Chromecast built-in (casting from your phone)
+# com.android.vending                      # Play Store (you can't install new apps without it)

@@ -1,0 +1,5 @@
+# Downloaded or created by tv-setup.sh / tv-setup.ps1
+platform-tools/
+*.apk
+*.apk.part
+*.log
