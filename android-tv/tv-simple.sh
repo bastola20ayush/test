@@ -5,13 +5,14 @@
 #
 # Usage: ./tv-simple.sh <tv-ip>[:port]              list what would be turned off
 #        ./tv-simple.sh <tv-ip>[:port] --apply      turn it off, keeping YouTube
+#        ./tv-simple.sh <tv-ip>[:port] --diagnose   show which home screen the TV opens and what apps it has
 #        ./tv-simple.sh <tv-ip>[:port] --aurora     install Aurora Store (an app store that replaces the Play Store)
 #        ./tv-simple.sh <tv-ip>[:port] --nepali-tv  install a live-TV app and add the Nepali channel list
 set -euo pipefail
 
 MODE=${2:-}
-if [[ $# -lt 1 || $# -gt 2 || ( -n $MODE && $MODE != --apply && $MODE != --aurora && $MODE != --nepali-tv ) ]]; then
-  echo "usage: $0 <tv-ip>[:port] [--apply | --aurora | --nepali-tv]" >&2
+if [[ $# -lt 1 || $# -gt 2 || ( -n $MODE && $MODE != --apply && $MODE != --aurora && $MODE != --diagnose && $MODE != --nepali-tv ) ]]; then
+  echo "usage: $0 <tv-ip>[:port] [--apply | --aurora | --diagnose | --nepali-tv]" >&2
   exit 2
 fi
 
@@ -116,6 +117,28 @@ declutter() {
   echo "Done. Press Home on the remote."
 }
 
+components() {
+  grep -oE '[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+' | sort -u || true
+}
+
+diagnose() {
+  local cat main=android.intent.action.MAIN
+  echo "Home screen the TV opens now:"
+  tv_sh cmd package resolve-activity --brief -a $main -c android.intent.category.HOME | components | sed 's/^/  /'
+  echo "Selecting FLauncher as the home screen..."
+  tv_sh cmd package set-home-activity "$FLAUNCHER_PKG/.MainActivity" | sed 's/^/  /'
+  echo "Home screen the TV opens now:"
+  tv_sh cmd package resolve-activity --brief -a $main -c android.intent.category.HOME | components | sed 's/^/  /'
+  for cat in HOME LEANBACK_LAUNCHER LAUNCHER; do
+    echo "Apps listed under $cat:"
+    tv_sh pm query-activities --brief -a $main -c "android.intent.category.$cat" | components | sed 's/^/  /'
+  done
+  echo "Apps turned off:"
+  tv_sh pm list packages -d | sed 's/^/  /'
+  echo "Apps installed by hand:"
+  tv_sh pm list packages -3 | sed 's/^/  /'
+}
+
 aurora() {
   local apk="$HERE/aurora-store.apk" code
   if tv_sh pm list packages "$AURORA_PKG" | grep -qxF "package:$AURORA_PKG"; then
@@ -161,6 +184,10 @@ nepali_tv() {
 
 find_adb
 connect
+if [[ $MODE == --diagnose ]]; then
+  diagnose
+  exit
+fi
 if [[ $MODE == --aurora ]]; then
   aurora
   exit
