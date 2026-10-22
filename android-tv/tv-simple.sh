@@ -193,9 +193,15 @@ nepali_tv() {
   sed -n 's/^#EXTINF:[^,]*,//p' "$list" | tr -d '\r' | head -60 | sed 's/^/  /'
 
   echo
-  echo "Opening the Play Store on the TV. Choose Install on TiviMate (the TV screen)."
-  tv_sh am start -a android.intent.action.VIEW -d "'market://details?id=$TIVIMATE_PKG'" >/dev/null
-  read -r -p "When it has finished installing, press Enter here: "
+  if tv_sh pm list packages -e | grep -qxF "package:$PLAY_STORE_PKG"; then
+    echo "Opening the Play Store on the TV. Choose Install on TiviMate (the TV screen)."
+    tv_sh am start -a android.intent.action.VIEW -d "'market://details?id=$TIVIMATE_PKG'" >/dev/null
+  else
+    echo "Opening Aurora Store on the TV. Search for TiviMate and choose Install."
+    echo "(First time: choose Anonymous login if it asks you to sign in.)"
+    tv_sh monkey -p "$AURORA_PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+  fi
+  read -r -p "When TiviMate has finished installing, press Enter here: "
   tv_sh monkey -p "$TIVIMATE_PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
   echo
   echo "On the TV, in TiviMate: Add playlist -> M3U playlist, then move to the"
