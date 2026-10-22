@@ -50,11 +50,9 @@ in_list() {
   return 1
 }
 
-# Prints the package of every app the TV shows on a home screen, plus every
-# app that was installed by hand.
-candidate_packages() {
+# Prints the package of every app that can appear on a home screen.
+launcher_packages() {
   local cat found pkg main=android.intent.action.MAIN
-  tv_sh pm list packages -3 | sed -n 's/^package://p'
   found=$(for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
     tv_sh pm query-activities --brief -a $main -c "android.intent.category.$cat" |
       grep -oE '[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+/' | tr -d '/' || true
@@ -63,12 +61,19 @@ candidate_packages() {
     echo "$found"
     return
   fi
-  # Some TVs return nothing for the command above, so ask about each app instead.
+  # Older TVs (Android 7) don't have that command. Read the system's own list
+  # of activities instead: each entry is "package/Activity filter", followed by
+  # the categories it is listed under.
+  found=$(tv_sh dumpsys package | awk '
+    $2 ~ /^[A-Za-z0-9_.]+\/[^ ]+$/ && $3 == "filter" { pkg = $2; sub(/\/.*/, "", pkg) }
+    /Category: "android.intent.category.(LAUNCHER|LEANBACK_LAUNCHER|HOME)"/ { if (pkg != "") print pkg }
+  ' | sort -u)
+  if [[ -n $found ]]; then
+    echo "$found"
+    return
+  fi
   echo "Checking each app one by one (about a minute)..." >&2
   while read -r pkg; do
-    in_list "$pkg" "${KEEP[@]}" && continue
-    is_protected "$pkg" && continue
-    [[ $pkg =~ $SAFE_REGEX ]] && continue
     for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
       if tv_sh cmd package resolve-activity --brief -a $main -c "android.intent.category.$cat" -p "$pkg" |
         grep -qF "$pkg/"; then
@@ -90,11 +95,18 @@ re_enable_youtube() {
 }
 
 declutter() {
-  local installed pkg out todo=() skipped=()
+  local installed pkg out uninstall=() todo=() skipped=()
   installed=$(tv_sh pm list packages -e | sed -n 's/^package://p')
+  # Every app that was installed by hand, whether it is turned on or not.
+  while read -r pkg; do
+    [[ -n $pkg ]] || continue
+    in_list "$pkg" "${KEEP[@]}" || is_protected "$pkg" || uninstall+=("$pkg")
+  done < <(tv_sh pm list packages -3 | sed -n 's/^package://p' | sort -u)
+  # Built-in apps that show on a home screen.
   while read -r pkg; do
     [[ -n $pkg ]] || continue
     grep -qxF "$pkg" <<<"$installed" || continue
+    in_list "$pkg" ${uninstall[@]+"${uninstall[@]}"} && continue
     if [[ $pkg == "$PLAY_STORE_PKG" ]] && ! grep -qxF "$AURORA_PKG" <<<"$installed"; then
       echo "Keeping the Play Store: Aurora Store isn't installed yet (run --aurora first)."
       skipped+=("$pkg")
@@ -103,20 +115,34 @@ declutter() {
     else
       todo+=("$pkg")
     fi
-  done < <(candidate_packages | sort -u)
+  done < <(launcher_packages | sort -u)
 
   echo
   echo "Keeping (${#skipped[@]}):"
   printf '  %s\n' ${skipped[@]+"${skipped[@]}"}
-  echo "To turn off (${#todo[@]}):"
+  echo "To uninstall - apps that were installed by hand (${#uninstall[@]}):"
+  printf '  %s\n' ${uninstall[@]+"${uninstall[@]}"}
+  echo "To turn off - built-in apps that can't be uninstalled (${#todo[@]}):"
   printf '  %s\n' ${todo[@]+"${todo[@]}"}
   if [[ $MODE != --apply ]]; then
     echo
-    echo "Nothing was changed. Run again with --apply to turn those off."
+    echo "Nothing was changed. Run again with --apply to do it."
     return
   fi
 
   echo
+  for pkg in ${uninstall[@]+"${uninstall[@]}"}; do
+    out=$(tv_sh pm uninstall "$pkg")
+    if [[ $out != *Success* ]]; then
+      echo "  FAILED    $pkg: $out"
+      continue
+    fi
+    echo "  uninstalled  $pkg"
+    # Updated built-in apps (such as Chrome) fall back to the built-in version.
+    if tv_sh pm list packages -e | grep -qxF "package:$pkg"; then
+      todo+=("$pkg")
+    fi
+  done
   for pkg in ${todo[@]+"${todo[@]}"}; do
     out=$(tv_sh pm disable-user --user 0 "$pkg")
     if [[ $out == *"new state: disabled-user"* ]]; then
@@ -131,6 +157,7 @@ declutter() {
     fi
     echo "$pkg" >>"$LOG"
   done
+  tv_sh am force-stop "$FLAUNCHER_PKG" >/dev/null
   tv_sh am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null
   echo "Done. Press Home on the remote."
 }
