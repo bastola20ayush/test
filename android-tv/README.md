@@ -89,6 +89,7 @@ After setup, `tv-simple.sh` strips the TV down to YouTube on the FLauncher home 
 bash test/android-tv/tv-simple.sh 192.168.0.100            # shows what would be turned off, changes nothing
 bash test/android-tv/tv-simple.sh 192.168.0.100 --apply    # turns those off
 bash test/android-tv/tv-simple.sh 192.168.0.100 --nepali-tv  # installs TiviMate and the Nepali channel list
+bash test/android-tv/tv-simple.sh 192.168.0.100 --aurora    # installs Aurora Store; after that --apply also turns off the Play Store
 ```
 
 `tv-setup.sh <ip> --restore` undoes all of it.

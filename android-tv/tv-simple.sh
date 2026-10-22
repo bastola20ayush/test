@@ -5,12 +5,13 @@
 #
 # Usage: ./tv-simple.sh <tv-ip>[:port]              list what would be turned off
 #        ./tv-simple.sh <tv-ip>[:port] --apply      turn it off, keeping YouTube
+#        ./tv-simple.sh <tv-ip>[:port] --aurora     install Aurora Store (an app store that replaces the Play Store)
 #        ./tv-simple.sh <tv-ip>[:port] --nepali-tv  install a live-TV app and add the Nepali channel list
 set -euo pipefail
 
 MODE=${2:-}
-if [[ $# -lt 1 || $# -gt 2 || ( -n $MODE && $MODE != --apply && $MODE != --nepali-tv ) ]]; then
-  echo "usage: $0 <tv-ip>[:port] [--apply | --nepali-tv]" >&2
+if [[ $# -lt 1 || $# -gt 2 || ( -n $MODE && $MODE != --apply && $MODE != --aurora && $MODE != --nepali-tv ) ]]; then
+  echo "usage: $0 <tv-ip>[:port] [--apply | --aurora | --nepali-tv]" >&2
   exit 2
 fi
 
@@ -22,17 +23,19 @@ LOG="$HERE/removed-packages-${SERIAL//[:.]/_}.log"
 FLAUNCHER_PKG=me.efesser.flauncher
 YOUTUBE_PKG=com.google.android.youtube.tv
 TIVIMATE_PKG=ar.tvplayer.tv
+AURORA_PKG=com.aurora.store
+PLAY_STORE_PKG=com.android.vending
 NEPAL_M3U=https://iptv-org.github.io/iptv/countries/np.m3u
 
-# Apps that stay on. The Play Store stays so YouTube and the live-TV app can
-# update; hide it from the home screen inside FLauncher instead.
-KEEP=("$YOUTUBE_PKG" "$FLAUNCHER_PKG" com.android.vending
+# Apps that stay on. The Play Store is turned off only once Aurora Store is
+# installed to take its place (see declutter).
+KEEP=("$YOUTUBE_PKG" "$FLAUNCHER_PKG" "$AURORA_PKG"
   "$TIVIMATE_PKG" studio.scillarium.ottnavigator com.nst.iptvsmarterstvbox)
 
 # Anything matching this is left alone even if it shows up as an app: vendor
 # settings, HDMI/input switching, keyboards and system services differ on every
 # TV brand, and turning them off can make the TV unusable.
-SAFE_REGEX='settings|input|hdmi|setup|provision|keyboard|systemui|bluetooth|wifi|webview|installer|permission|provider|vending|google\.android\.gms|gsf|\.ime($|\.)'
+SAFE_REGEX='settings|input|hdmi|setup|provision|keyboard|systemui|bluetooth|wifi|webview|installer|permission|provider|google\.android\.gms|gsf|\.ime($|\.)'
 
 # shellcheck source=tv-lib.sh
 source "$HERE/tv-lib.sh"
@@ -73,7 +76,10 @@ declutter() {
   while read -r pkg; do
     [[ -n $pkg ]] || continue
     grep -qxF "$pkg" <<<"$installed" || continue
-    if in_list "$pkg" "${KEEP[@]}" || is_protected "$pkg" || [[ $pkg =~ $SAFE_REGEX ]]; then
+    if [[ $pkg == "$PLAY_STORE_PKG" ]] && ! grep -qxF "$AURORA_PKG" <<<"$installed"; then
+      echo "Keeping the Play Store: Aurora Store isn't installed yet (run --aurora first)."
+      skipped+=("$pkg")
+    elif in_list "$pkg" "${KEEP[@]}" || is_protected "$pkg" || [[ $pkg =~ $SAFE_REGEX ]]; then
       skipped+=("$pkg")
     else
       todo+=("$pkg")
@@ -110,6 +116,28 @@ declutter() {
   echo "Done. Press Home on the remote."
 }
 
+aurora() {
+  local apk="$HERE/aurora-store.apk" code
+  if tv_sh pm list packages "$AURORA_PKG" | grep -qxF "package:$AURORA_PKG"; then
+    echo "Aurora Store is already installed."
+    return
+  fi
+  echo "Finding the latest Aurora Store on F-Droid..."
+  code=$(curl -fsSL https://f-droid.org/api/v1/packages/$AURORA_PKG |
+    grep -oE '"suggestedVersionCode": *[0-9]+' | grep -oE '[0-9]+')
+  [[ -n $code ]] || { echo "Couldn't find the Aurora Store version." >&2; exit 1; }
+  echo "Downloading Aurora Store (version $code)..."
+  curl -fsSL -o "$apk" "https://f-droid.org/repo/${AURORA_PKG}_$code.apk"
+  tv install -r "$apk"
+  rm -f "$apk"
+  if tv_sh pm list packages "$AURORA_PKG" | grep -qxF "package:$AURORA_PKG"; then
+    echo "Aurora Store is installed. Run with --apply to turn off the Play Store."
+  else
+    echo "Aurora Store did not install; the Play Store was left on." >&2
+    exit 1
+  fi
+}
+
 nepali_tv() {
   local list="$HERE/nepal.m3u"
   echo "Downloading the Nepali channel list..."
@@ -133,6 +161,10 @@ nepali_tv() {
 
 find_adb
 connect
+if [[ $MODE == --aurora ]]; then
+  aurora
+  exit
+fi
 if [[ $MODE == --nepali-tv ]]; then
   nepali_tv
   exit
