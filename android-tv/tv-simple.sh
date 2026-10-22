@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Strips an Android TV down to YouTube (plus a live-TV app) on the FLauncher
+# home screen. Everything it turns off can be brought back with
+# "tv-setup.sh <tv-ip> --restore".
+#
+# Usage: ./tv-simple.sh <tv-ip>[:port]              list what would be turned off
+#        ./tv-simple.sh <tv-ip>[:port] --apply      turn it off, keeping YouTube
+#        ./tv-simple.sh <tv-ip>[:port] --nepali-tv  install a live-TV app and add the Nepali channel list
+set -euo pipefail
+
+MODE=${2:-}
+if [[ $# -lt 1 || $# -gt 2 || ( -n $MODE && $MODE != --apply && $MODE != --nepali-tv ) ]]; then
+  echo "usage: $0 <tv-ip>[:port] [--apply | --nepali-tv]" >&2
+  exit 2
+fi
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+SERIAL=$1
+[[ $SERIAL == *:* ]] || SERIAL="$SERIAL:5555"
+LOG="$HERE/removed-packages-${SERIAL//[:.]/_}.log"
+
+FLAUNCHER_PKG=me.efesser.flauncher
+YOUTUBE_PKG=com.google.android.youtube.tv
+TIVIMATE_PKG=ar.tvplayer.tv
+NEPAL_M3U=https://iptv-org.github.io/iptv/countries/np.m3u
+
+# Apps that stay on. The Play Store stays so YouTube and the live-TV app can
+# update; hide it from the home screen inside FLauncher instead.
+KEEP=("$YOUTUBE_PKG" "$FLAUNCHER_PKG" com.android.vending
+  "$TIVIMATE_PKG" studio.scillarium.ottnavigator org.xbmc.kodi com.nst.iptvsmarterstvbox)
+
+# Anything matching this is left alone even if it shows up as an app: vendor
+# settings, HDMI/input switching, keyboards and system services differ on every
+# TV brand, and turning them off can make the TV unusable.
+SAFE_REGEX='settings|input|hdmi|setup|provision|keyboard|systemui|bluetooth|wifi|webview|installer|permission|provider|vending|google\.android\.gms|gsf|\.ime($|\.)'
+
+# shellcheck source=tv-lib.sh
+source "$HERE/tv-lib.sh"
+
+in_list() {
+  local needle=$1 item
+  shift
+  for item in "$@"; do
+    [[ $item == "$needle" ]] && return 0
+  done
+  return 1
+}
+
+# Prints the package of every app the TV shows on a home screen, plus every
+# app that was installed by hand.
+candidate_packages() {
+  local cat
+  tv_sh pm list packages -3 | sed -n 's/^package://p'
+  for cat in LEANBACK_LAUNCHER LAUNCHER HOME; do
+    tv_sh pm query-activities --brief -a android.intent.action.MAIN -c "android.intent.category.$cat" |
+      grep -oE '[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+/' | tr -d '/' || true
+  done
+}
+
+re_enable_youtube() {
+  tv_sh pm install-existing "$YOUTUBE_PKG" >/dev/null
+  tv_sh pm enable --user 0 "$YOUTUBE_PKG" >/dev/null
+  if [[ -f $LOG ]]; then
+    grep -vxF "$YOUTUBE_PKG" "$LOG" >"$LOG.tmp" || true
+    mv "$LOG.tmp" "$LOG"
+  fi
+  echo "YouTube is turned on."
+}
+
+declutter() {
+  local installed pkg out todo=() skipped=()
+  installed=$(tv_sh pm list packages -e | sed -n 's/^package://p')
+  while read -r pkg; do
+    [[ -n $pkg ]] || continue
+    grep -qxF "$pkg" <<<"$installed" || continue
+    if in_list "$pkg" "${KEEP[@]}" || is_protected "$pkg" || [[ $pkg =~ $SAFE_REGEX ]]; then
+      skipped+=("$pkg")
+    else
+      todo+=("$pkg")
+    fi
+  done < <(candidate_packages | sort -u)
+
+  echo
+  echo "Keeping (${#skipped[@]}):"
+  printf '  %s\n' ${skipped[@]+"${skipped[@]}"}
+  echo "To turn off (${#todo[@]}):"
+  printf '  %s\n' ${todo[@]+"${todo[@]}"}
+  if [[ $MODE != --apply ]]; then
+    echo
+    echo "Nothing was changed. Run again with --apply to turn those off."
+    return
+  fi
+
+  echo
+  for pkg in ${todo[@]+"${todo[@]}"}; do
+    out=$(tv_sh pm disable-user --user 0 "$pkg")
+    if [[ $out == *"new state: disabled-user"* ]]; then
+      echo "  disabled  $pkg"
+    else
+      out=$(tv_sh pm uninstall -k --user 0 "$pkg")
+      if [[ $out != *Success* ]]; then
+        echo "  FAILED    $pkg: $out"
+        continue
+      fi
+      echo "  removed   $pkg"
+    fi
+    echo "$pkg" >>"$LOG"
+  done
+  tv_sh am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null
+  echo "Done. Press Home on the remote."
+}
+
+nepali_tv() {
+  local list="$HERE/nepal.m3u"
+  echo "Downloading the Nepali channel list..."
+  curl -fsSL -o "$list" "$NEPAL_M3U"
+  echo "Found $(grep -c '^#EXTINF' "$list") channels:"
+  sed -n 's/^#EXTINF:[^,]*,//p' "$list" | tr -d '\r' | head -60 | sed 's/^/  /'
+
+  echo
+  echo "Opening the Play Store on the TV. Choose Install on TiviMate (the TV screen)."
+  tv_sh am start -a android.intent.action.VIEW -d "'market://details?id=$TIVIMATE_PKG'" >/dev/null
+  read -r -p "When it has finished installing, press Enter here: "
+  tv_sh monkey -p "$TIVIMATE_PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+  echo
+  echo "On the TV, in TiviMate: Add playlist -> M3U playlist, then move to the"
+  echo "address box so the keyboard opens (cursor in the box)."
+  read -r -p "When the cursor is in the address box, press Enter here and I'll type the address: "
+  tv_sh input text "$NEPAL_M3U" >/dev/null
+  echo "Typed: $NEPAL_M3U"
+  echo "On the TV, close the keyboard and choose Next until the channels load."
+}
+
+find_adb
+connect
+if [[ $MODE == --nepali-tv ]]; then
+  nepali_tv
+  exit
+fi
+re_enable_youtube
+declutter

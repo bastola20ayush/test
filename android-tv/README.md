@@ -80,3 +80,15 @@ powershell -ExecutionPolicy Bypass -File tv-setup.ps1 192.168.1.50 -Restore
 This turns every app the script removed back on, uninstalls FLauncher, and returns you to the original home screen. The script keeps a record of what it removed for each TV in `removed-packages-<ip>.log`, so don't delete that file.
 
 A factory reset also undoes everything.
+
+## Keep only YouTube
+
+After setup, `tv-simple.sh` strips the TV down to YouTube on the FLauncher home screen. It turns YouTube back on, then turns off every other app that shows on the home screen or was installed by hand. It leaves settings, HDMI input, keyboards and the Play Store alone.
+
+```bash
+bash test/android-tv/tv-simple.sh 192.168.0.100            # shows what would be turned off, changes nothing
+bash test/android-tv/tv-simple.sh 192.168.0.100 --apply    # turns those off
+bash test/android-tv/tv-simple.sh 192.168.0.100 --nepali-tv  # installs TiviMate and the Nepali channel list
+```
+
+`tv-setup.sh <ip> --restore` undoes all of it.
